@@ -76,7 +76,7 @@ function App() {
         />
         <input 
           type="text" 
-          placeholder="Dia (ex: dilluns)" 
+          placeholder="Dia -> (ex: dilluns)" 
           value={day} 
           onChange={e => setDay(e.target.value)} 
           required 
