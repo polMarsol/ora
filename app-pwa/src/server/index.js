@@ -4,50 +4,66 @@ const { MongoClient } = require('mongodb');
 const cors = require('cors');
 require('dotenv').config();
 
-// --- Importaciones clave de Dialogflow y UUID ---
 const { SessionsClient } = require('@google-cloud/dialogflow');
 const { v4: uuidv4 } = require('uuid');
-// --- FIN Importaciones ---
 
 const app = express();
 app.use(bodyParser.json());
-app.use(cors()); // Habilita CORS para todas las rutas
+app.use(cors());
 
-const uri = process.env.MONGO_URI; // Asegúrate de que MONGO_URI está en tu archivo .env
+const uri = process.env.MONGO_URI;
 const client = new MongoClient(uri);
 let db;
 
-// --- Configuración de Dialogflow ---
-// ¡IMPORTANTE! Asegúrate de que 'dialogflow_credentials.json' está en la MISMA carpeta que este archivo (server/index.js).
-// Este archivo se descarga desde tu cuenta de servicio de Google Cloud.
 process.env.GOOGLE_APPLICATION_CREDENTIALS = './dialogflow_credentials.json';
-
-// Lo encuentras en la consola de Dialogflow, en la configuración del agente.
-const projectId = 'gestorhoraris-sdoj'; 
+const projectId = 'gestorhoraris-sdoj';
 const sessionClient = new SessionsClient();
-// --- FIN Configuración ---
 
 async function connectDB() {
   try {
     await client.connect();
-    db = client.db('ora'); // Base de datos "ora"
+    db = client.db('Ora');
     console.log('📦 Connexió MongoDB OK');
   } catch (error) {
     console.error('❌ Error al conectar a MongoDB:', error);
-    process.exit(1); // Sale de la aplicación si no puede conectar a la DB
+    process.exit(1);
   }
 }
 
-connectDB(); // Llamada para conectar la DB al iniciar el servidor
+connectDB();
 
-// Endpoint para que el frontend envíe la voz al backend
+// Funció auxiliar per normalitzar dies (per exemple, "dimecres" -> "dimecres")
+const normalizeDay = (dayString) => {
+    if (!dayString) return '';
+    // Converteix la primera lletra a majúscula i la resta a minúscula per consistència
+    return dayString.charAt(0).toUpperCase() + dayString.slice(1).toLowerCase();
+};
+
+// Funció auxiliar per normalitzar l'hora
+const normalizeTime = (timeString) => {
+    if (!timeString) return '';
+    try {
+
+        const date = new Date(timeString);
+        if (isNaN(date.getTime())) { 
+
+            return timeString;
+        }
+        return date.toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+        console.error("Error normalitzant l'hora:", timeString, e);
+        return timeString; 
+    }
+};
+
+
 app.post('/process-dialogflow-voice', async (req, res) => {
-  const query = req.body.query; // El transcript de voz enviado por el frontend
+  const query = req.body.query;
   if (!query) {
     return res.status(400).json({ error: 'Query de voz no proporcionada.' });
   }
 
-  const sessionId = uuidv4(); // Genera un ID de sesión único para cada conversación
+  const sessionId = uuidv4();
   const sessionPath = sessionClient.projectAgentSessionPath(projectId, sessionId);
 
   const request = {
@@ -55,7 +71,7 @@ app.post('/process-dialogflow-voice', async (req, res) => {
     queryInput: {
       text: {
         text: query,
-        languageCode: 'ca', // Asegúrate de que este idioma coincida con el de tu agente de Dialogflow
+        languageCode: 'ca',
       },
     },
   };
@@ -65,25 +81,20 @@ app.post('/process-dialogflow-voice', async (req, res) => {
     const responses = await sessionClient.detectIntent(request);
     const result = responses[0].queryResult;
 
-    console.log('[process-dialogflow-voice] Respuesta de Dialogflow recibida:', JSON.stringify(result, null, 2)); // Usamos JSON.stringify para ver el objeto completo
+    console.log('[process-dialogflow-voice] Respuesta de Dialogflow recibida:', JSON.stringify(result, null, 2)); 
+    console.log('[process-dialogflow-voice] Raw parameters fields:', JSON.stringify(result.parameters.fields, null, 2)); 
 
-    // Verifica si Dialogflow detectó el intento "AfegirHorari"
     if (result.intent && result.intent.displayName === 'AfegirHorari') {
-      // --- ¡CORRECCIÓN CLAVE EN LA EXTRACCIÓN DE PARÁMETROS! ---
-      const parameters = result.parameters.fields; // Accedemos al objeto 'fields'
+      const parameters = result.parameters.fields;
 
       const horari = {
-        // Acceso robusto a los valores, usando `?.` para seguridad y `?? ''` para valores por defecto
         title: parameters.title?.stringValue ?? '',
-        day: parameters.day?.stringValue ?? '',
-        time: parameters.time?.stringValue ?? '',
+        day: normalizeDay(parameters.day?.stringValue), 
+        time: normalizeTime(parameters.time?.stringValue), 
       };
-      // --- FIN CORRECCIÓN ---
 
       console.log(`[process-dialogflow-voice] Parámetros extraídos: title: "${horari.title}", day: "${horari.day}", time: "${horari.time}"`);
 
-
-      // Validar que los parámetros esenciales existen antes de guardar
       if (!horari.title || !horari.day || !horari.time) {
         console.warn('[process-dialogflow-voice] Parámetros incompletos recibidos de Dialogflow para guardar:', horari);
         return res.json({
@@ -92,18 +103,15 @@ app.post('/process-dialogflow-voice', async (req, res) => {
         });
       }
 
-      // Guarda el horario en MongoDB
       await db.collection('horaris').insertOne(horari);
       console.log('[process-dialogflow-voice] Horario guardado en MongoDB:', horari);
 
-      // Envía una respuesta al frontend con el item guardado y el mensaje de Dialogflow
       return res.json({
-        fulfillmentText: result.fulfillmentText || `Activitat "${horari.title}" afegida per ${horari.day} a les ${horari.time}.`, // Proporciona un fulfillmentText por defecto
+        fulfillmentText: result.fulfillmentText || `Activitat "${horari.title}" afegida per ${horari.day} a les ${horari.time}.`,
         scheduleItem: horari
       });
 
     } else {
-      // Si Dialogflow no detectó el intento "AfegirHorari" o faltaron cosas
       console.log('[process-dialogflow-voice] Intento no reconocido o no fue "AfegirHorari".');
       return res.json({
         fulfillmentText: result.fulfillmentText || 'No he entès la teva petició. Podries ser més específic per afegir un horari?',
@@ -117,11 +125,10 @@ app.post('/process-dialogflow-voice', async (req, res) => {
   }
 });
 
-// Endpoint para Dialogflow (este seguirá siendo llamado por Dialogflow directamente cuando el intent tenga el webhook habilitado)
 app.post('/webhook', async (req, res) => {
   try {
     const intent = req.body.queryResult.intent.displayName;
-    const parameters = req.body.queryResult.parameters; // Estos ya vienen parseados si el webhook se activa
+    const parameters = req.body.queryResult.parameters;
 
     console.log('[webhook] Webhook de Dialogflow activado. Intent:', intent);
     console.log('[webhook] Parámetros de Dialogflow (desde webhook):', parameters);
@@ -129,8 +136,8 @@ app.post('/webhook', async (req, res) => {
     if (intent === 'AfegirHorari') {
       const horari = {
         title: parameters['title'],
-        day: parameters['day'], // Usamos 'day' si es el nombre del parámetro en Dialogflow
-        time: parameters['time'],
+        day: normalizeDay(parameters['day']), // Utilitzem la nova funció normalizeDay
+        time: normalizeTime(parameters['time']), // Utilitzem la nova funció normalizeTime
         createdAt: new Date()
       };
 

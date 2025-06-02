@@ -43,22 +43,19 @@ function App() {
       const transcript = event.results[0][0].transcript.toLowerCase();
       alert('Has dit: ' + transcript);
 
-      // 🔗 ¡Ahora enviamos el transcript a nuestro propio backend (en el nuevo endpoint)
-      // para que el backend se comunique con Dialogflow y luego nos devuelva el resultado.
       try {
         console.log('Enviant transcript al backend per Dialogflow:', transcript);
-        const resposta = await fetch('http://localhost:3000/process-dialogflow-voice', { // <-- Endpoint al que llama el frontend
+        const resposta = await fetch('http://localhost:3000/process-dialogflow-voice', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ query: transcript }) // Enviamos solo el transcript
+          body: JSON.stringify({ query: transcript })
         });
 
         const data = await resposta.json();
         console.log('Resposta del backend (després de Dialogflow):', data);
 
-        // Si la respuesta del backend incluye un horario y un mensaje, lo añadimos y mostramos
         if (data && data.scheduleItem && data.scheduleItem.day && data.scheduleItem.time && data.scheduleItem.title) {
           setSchedule(prev => [...prev, {
             day: data.scheduleItem.day,
@@ -67,7 +64,6 @@ function App() {
           }]);
           alert(data.fulfillmentText || 'Activitat afegida correctament!');
         } else {
-          // Si no se pudo añadir o hubo un error, mostramos el mensaje de error o el de Dialogflow
           alert(data.fulfillmentText || 'No s\'ha pogut afegir l\'activitat. ' + (data.error || 'Resposta inesperada del servidor.'));
         }
       } catch (err) {
