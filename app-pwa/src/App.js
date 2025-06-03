@@ -19,7 +19,7 @@ const localizer = momentLocalizer(moment);
 
 // Defineix la URL base del backend
 // IMPORTANT: SUBSTITUEIX AQUESTA URL AMB LA TEVA URL DE BACKEND DE RENDER.COM O SIMILAR
-const API_BASE_URL = 'https://ora-rkes.onrender.com';//***************************************************************************************************************************************** */
+const API_BASE_URL = 'https://ora-44gf.onrender.com';//***************************************************************************************************************************************** */
 
 function App() {
   const [schedule, setSchedule] = useState([]);
