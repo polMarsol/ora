@@ -215,7 +215,7 @@ app.post('/process-dialogflow-voice', async (req, res) => {
             minute = 45;
         }
         
-        console.log('minuts prova', minutsRaw);
+        console.log('minuts prova', minutsRaw," min -> ", minute);
 
 
         // Si només tens l’hora (ex: "10"), converteix-la a "10:00", si tens minuts, "10:15", etc.
