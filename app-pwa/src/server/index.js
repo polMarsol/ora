@@ -221,9 +221,48 @@ app.post('/process-dialogflow-voice', async (req, res) => {
         // Si només tens l’hora (ex: "10"), converteix-la a "10:00", si tens minuts, "10:15", etc.
         let time = '';
         if (hour) {
-            const h = parseInt(hour, 10);
+            // Mapa per convertir paraules a hores (ja que "deu" no es pot parsejar directament)
+            const hourMapping = {
+                'zero': 0,
+                'una': 1,
+                'dues': 2,
+                'tres': 3,
+                'quatre': 4,
+                'cinc': 5,
+                'sis': 6,
+                'set': 7,
+                'vuit': 8,
+                'nou': 9,
+                'deu': 10,
+                'onze': 11,
+                'dotze': 12,
+                'tretze': 13,
+                'catorze': 14,
+                'quinze': 15,
+                'setze': 16,
+                'disset': 17,
+                'divuit': 18,
+                'dinou': 19,
+                'vint': 20,
+                'vint-i-u': 21,
+                'vint-i-dos': 22,
+                'vint-i-tres': 23,
+            };
+
+
+            let h = parseInt(hour, 10);
+            if (isNaN(h)) {
+                h = hourMapping[hour.toLowerCase()] ?? null;
+            }
+
             const m = parseInt(minute, 10);
-            time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+            if (h !== null && !isNaN(m)) {
+                time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            } else {
+                console.warn(`[process-dialogflow-voice] Hora no vàlida: hour = "${hour}", h = ${h}, minuts = ${minute}`);
+                time = '';
+            }
         }
 
         const horari = {
