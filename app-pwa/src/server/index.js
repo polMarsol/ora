@@ -89,12 +89,19 @@ const normalizeDay = (dayString) => {
 const normalizeTime = (timeString) => {
     if (!timeString) return '';
     try {
-        // Dialogflow sovint retorna un string ISO 8601 per @sys.time (ex: "2025-06-02T21:00:00Z")
+        // Intenta parsejar com a ISO 8601 (ex: "2025-06-02T21:00:00Z")
         const date = new Date(timeString);
-        if (!isNaN(date.getTime())) { // Comprovem si la data és vàlida
+        if (!isNaN(date.getTime())) {
             return date.toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit' });
         }
-        // Si no és una data ISO vàlida, mirem si és una paraula com "nou"
+
+        // Intenta convertir "10" → "10:00"
+        const numericHour = parseInt(timeString, 10);
+        if (!isNaN(numericHour) && numericHour >= 0 && numericHour <= 23) {
+            return `${String(numericHour).padStart(2, '0')}:00`;
+        }
+
+        // Mapa per paraules (en català)
         const hourMapping = {
             'nou': '09:00',
             'tres': '03:00',
@@ -105,15 +112,16 @@ const normalizeTime = (timeString) => {
             'deu': '10:00',
             'onze': '11:00',
             'dotze': '12:00',
-            'una': '13:00', // Assumim 13:00 per "una" si no hi ha més context
-            // Afegeix més mapes si cal per nombres com a hores
+            'una': '13:00'
         };
-        return hourMapping[timeString.toLowerCase()] || timeString; // Utilitza el mapa o retorna l'original
+
+        return hourMapping[timeString.toLowerCase()] || timeString;
     } catch (e) {
         console.error("Error normalitzant l'hora:", timeString, e);
         return timeString;
     }
 };
+
 
 // Helper per obtenir valors de paràmetres de Dialogflow (maneja listValue i stringValue)
 const getParamValue = (paramField) => {
