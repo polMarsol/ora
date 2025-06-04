@@ -318,9 +318,13 @@ app.post('/process-dialogflow-voice', async (req, res) => {
 
 
 // Endpoint per eliminar activitats
-app.delete('/horaris/:id', authenticateUser, async (req, res) => {
-    const { id } = req.params;
-    const uid = req.user.uid;
+app.delete('/horaris/:id', async (req, res) => {
+    console.log('DELETE /horaris/:id headers:', req.headers);
+  const { id } = req.params;
+  const uid = req.headers['uid'];
+  if (!uid) {
+    return res.status(401).json({ error: 'Unauthorized: UID requerit' });
+  }
 
     if (!ObjectId.isValid(id)) {
         return res.status(400).json({ error: 'ID d\'activitat invàlid.' });

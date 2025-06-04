@@ -45,7 +45,7 @@ const fetchSchedule = async () => {
     const response = await fetch(`${API_BASE_URL}/horaris`, {
       headers: {
         'Content-Type': 'application/json',
-        'x-uid': user?.uid || ''
+        'uid': user?.uid || ''
       }
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -60,6 +60,7 @@ const fetchSchedule = async () => {
 };
 
 
+
   useEffect(() => {
     if (user) fetchSchedule();
     else setSchedule([]);
@@ -69,125 +70,137 @@ const fetchSchedule = async () => {
     localStorage.setItem('schedule', JSON.stringify(schedule));
   }, [schedule]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!title || !day || !time) return;
-    const newActivity = { title, day, time, uid: user.uid };
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (!title || !day || !time) return;
+  const newActivity = { title, day, time, uid: user.uid };
+  try {
+    const response = await fetch(`${API_BASE_URL}/horaris`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newActivity)
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    await fetchSchedule();
+    setTitle(''); setDay(''); setTime('');
+    alert('Activitat afegida correctament!');
+  } catch (error) {
+    console.error("Error afegint activitat:", error);
+    alert('No s\'ha pogut afegir l\'activitat.');
+  }
+};
+
+// ...existing code...
+
+const handleManualFormSubmit = async (e) => {
+  e.preventDefault();
+  if (!manualActivityTitle || !manualActivityDay || !manualActivityTime) return;
+  const newActivity = {
+    title: manualActivityTitle,
+    day: manualActivityDay,
+    time: manualActivityTime,
+    uid: user.uid
+  };
+  try {
+    const token = await user.getIdToken(); // Obté el token de l'usuari autenticat
+    const response = await fetch(`${API_BASE_URL}/horaris`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(newActivity)
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    await fetchSchedule();
+    setManualActivityTitle('');
+    setManualActivityDay('');
+    setManualActivityTime('');
+    setShowManualForm(false);
+    alert('Activitat manual afegida correctament!');
+  } catch (error) {
+    console.error("Error afegint activitat manual:", error);
+    alert('No s\'ha pogut afegir l\'activitat manual.');
+  }
+};
+
+const handleDelete = async (idToDelete) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/horaris/${idToDelete}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'uid': user?.uid || '' }
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    await fetchSchedule();
+    alert('Activitat eliminada correctament!');
+  } catch (error) {
+    console.error("Error eliminant activitat:", error);
+    alert('No s\'ha pogut eliminar l\'activitat.');
+  }
+};
+
+
+const startVoiceInput = () => {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return alert('El navegador no suporta reconeixement de veu.');
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'ca-ES';
+  recognition.start();
+
+  recognition.onresult = async (event) => {
+    const transcript = event.results[0][0].transcript.toLowerCase();
+    alert('Has dit: ' + transcript);
+
     try {
-      const response = await fetch(`${API_BASE_URL}/horaris`, {
+      const resposta = await fetch(`${API_BASE_URL}/process-dialogflow-voice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newActivity)
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query: transcript, uid: user.uid }) // <-- Afegeix el uid aquí!
       });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      await fetchSchedule();
-      setTitle(''); setDay(''); setTime('');
-      alert('Activitat afegida correctament!');
-      window.location.reload(); 
-    } catch (error) {
-      console.error("Error afegint activitat:", error);
-      alert('No s\'ha pogut afegir l\'activitat.');
-    }
-  };
 
-  const handleManualFormSubmit = async (e) => {
-    e.preventDefault();
-    if (!manualActivityTitle || !manualActivityDay || !manualActivityTime) return;
-    const newActivity = {
-      title: manualActivityTitle,
-      day: manualActivityDay,
-      time: manualActivityTime
-    };
-    try {
-      const response = await fetch(`${API_BASE_URL}/horaris`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newActivity)
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      await fetchSchedule();
-      setManualActivityTitle('');
-      setManualActivityDay('');
-      setManualActivityTime('');
-      setShowManualForm(false);
-      alert('Activitat manual afegida correctament!');
-    } catch (error) {
-      console.error("Error afegint activitat manual:", error);
-      alert('No s\'ha pogut afegir l\'activitat manual.');
-    }
-  };
+      const data = await resposta.json();
+      const { title, day, hour, minuts } = data?.scheduleItem || {};
 
-  const handleDelete = async (idToDelete) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/horaris/${idToDelete}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      await fetchSchedule();
-      alert('Activitat eliminada correctament!');
-    } catch (error) {
-      console.error("Error eliminant activitat:", error);
-      alert('No s\'ha pogut eliminar l\'activitat.');
-    }
-  };
-
-  const startVoiceInput = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return alert('El navegador no suporta reconeixement de veu.');
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'ca-ES';
-    recognition.start();
-
-    recognition.onresult = async (event) => {
-      const transcript = event.results[0][0].transcript.toLowerCase();
-      alert('Has dit: ' + transcript);
-
-      try {
-        const resposta = await fetch(`${API_BASE_URL}/process-dialogflow-voice`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: transcript })
-        });
-
-        const data = await resposta.json();
-        const { title, day, hour, minuts } = data?.scheduleItem || {};
-
-        if (!title || !day || !hour) {
-          alert(data.fulfillmentText || 'Falten dades per afegir l\'activitat.');
-          return;
-        }
-
-        let minutes = 0;
-        if (minuts) {
-          const m = minuts.toString().toLowerCase();
-          if (['15', 'quinze', 'quart'].includes(m)) minutes = 15;
-          else if (['30', 'trenta', 'mitja'].includes(m)) minutes = 30;
-          else if (['45', 'quaranta-cinc'].includes(m)) minutes = 45;
-        }
-
-        const horaFinal = `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-
-        const newActivity = { title, day, time: horaFinal, uid: user.uid};
-
-        const response = await fetch(`${API_BASE_URL}/horaris`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newActivity)
-        });
-
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        await fetchSchedule();
-        alert(data.fulfillmentText || 'Activitat afegida!');
-      } catch (err) {
-        console.error('Error veu:', err);
-        alert('Error en processar veu.');
+      if (!title || !day || !hour) {
+        alert(data.fulfillmentText || 'Falten dades per afegir l\'activitat.');
+        return;
       }
-    };
 
-    recognition.onerror = (event) => {
-      console.error('Error reconeixement:', event.error);
-      alert('Error reconeixement: ' + event.error);
-    };
+      let minutes = 0;
+      if (minuts) {
+        const m = minuts.toString().toLowerCase();
+        if (['15', 'quinze', 'quart'].includes(m)) minutes = 15;
+        else if (['30', 'trenta', 'mitja'].includes(m)) minutes = 30;
+        else if (['45', 'quaranta-cinc'].includes(m)) minutes = 45;
+      }
+
+      const horaFinal = `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+
+      const newActivity = { title, day, time: horaFinal, uid: user.uid };
+
+      const response = await fetch(`${API_BASE_URL}/horaris`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newActivity)
+      });
+
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      await fetchSchedule();
+      alert(data.fulfillmentText || 'Activitat afegida!');
+    } catch (err) {
+      console.error('Error veu:', err);
+      alert('Error en processar veu.');
+    }
   };
+
+  recognition.onerror = (event) => {
+    console.error('Error reconeixement:', event.error);
+    alert('Error reconeixement: ' + event.error);
+  };
+};
 
   const handleRegister = async (e) => {
     e.preventDefault();
