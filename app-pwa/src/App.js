@@ -98,26 +98,54 @@ function App() {
     recognition.start();
 
     recognition.onresult = async (event) => {
-      const transcript = event.results[0][0].transcript.toLowerCase();
-      alert('Has dit: ' + transcript);
-      try {
-        const resposta = await fetch(`${API_BASE_URL}/process-dialogflow-voice`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: transcript })
-        });
-        const data = await resposta.json();
-        if (data?.scheduleItem?.title && data.scheduleItem.day && data.scheduleItem.time) {
-          await fetchSchedule();
-          alert(data.fulfillmentText || 'Activitat afegida!');
-        } else {
-          alert(data.fulfillmentText || 'No s\'ha pogut afegir l\'activitat.');
-        }
-      } catch (err) {
-        console.error('Error veu:', err);
-        alert('Error en processar veu.');
-      }
-    };
+  const transcript = event.results[0][0].transcript.toLowerCase();
+  alert('Has dit: ' + transcript);
+
+  try {
+    const resposta = await fetch(`${API_BASE_URL}/process-dialogflow-voice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: transcript })
+    });
+
+    const data = await resposta.json();
+    const { title, day, hour, minuts } = data?.scheduleItem || {};
+
+    if (!title || !day || !hour) {
+      alert(data.fulfillmentText || 'Falten dades per afegir l\'activitat.');
+      return;
+    }
+
+    // Convertim "minuts" a números vàlids o 00
+    let minutes = 0;
+    if (minuts) {
+      const m = minuts.toString().toLowerCase();
+      if (['15', 'quinze', 'quart'].includes(m)) minutes = 15;
+      else if (['30', 'trenta', 'mitja'].includes(m)) minutes = 30;
+      else if (['45', 'quaranta-cinc'].includes(m)) minutes = 45;
+    }
+
+    // Formata hora com HH:mm
+    const horaFinal = `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+
+    // Creem la nova activitat
+    const newActivity = { title, day, time: horaFinal };
+
+    const response = await fetch(`${API_BASE_URL}/horaris`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newActivity)
+    });
+
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    await fetchSchedule();
+    alert(data.fulfillmentText || 'Activitat afegida!');
+  } catch (err) {
+    console.error('Error veu:', err);
+    alert('Error en processar veu.');
+  }
+};
+
 
     recognition.onerror = (event) => {
       console.error('Error reconeixement:', event.error);
