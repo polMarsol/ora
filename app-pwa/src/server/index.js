@@ -165,17 +165,15 @@ const authenticateUser = async (req, res, next) => {
 
 
 // Endpoint per obtenir totes les activitats
-app.get('/horaris', authenticateUser, async (req, res) => {
-    const uid = req.user.uid;
-    console.log(`[GET /horaris] UID: ${uid}`);
-    try {
-        const horaris = await db.collection('horaris').find({ uid }).toArray();
-        res.status(200).json(horaris);
-    } catch (error) {
-        console.error('[GET /horaris] Error obtenint horaris:', error);
-        res.status(500).json({ error: 'Error intern del servidor obtenint els horaris.' });
+app.get('/horaris', async (req, res) => {
+    const uid = req.headers['uid'];
+    if (!uid) {
+        return res.status(401).json({ error: 'Unauthorized: UID requerit' });
     }
+    const horaris = await db.collection('horaris').find({ uid }).toArray();
+    res.json(horaris);
 });
+
 
 
 // Endpoint per afegir activitats manualment

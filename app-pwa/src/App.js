@@ -40,19 +40,25 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  const fetchSchedule = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/horaris`);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
-      setSchedule(data);
-    } catch (error) {
-      console.error("Error carregant horaris:", error);
-      const saved = localStorage.getItem('schedule');
-      setSchedule(saved ? JSON.parse(saved) : []);
-      alert('No s\'han pogut carregar els horaris del servidor. S\'usaran dades locals si hi ha.');
-    }
-  };
+const fetchSchedule = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/horaris`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-uid': user?.uid || ''
+      }
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    setSchedule(data);
+  } catch (error) {
+    console.error("Error carregant horaris:", error);
+    const saved = localStorage.getItem('schedule');
+    setSchedule(saved ? JSON.parse(saved) : []);
+    alert('No s\'han pogut carregar els horaris del servidor. S\'usaran dades locals si hi ha.');
+  }
+};
+
 
   useEffect(() => {
     if (user) fetchSchedule();
