@@ -202,7 +202,7 @@ app.post('/process-dialogflow-voice', async (req, res) => {
             // Extracció de paràmetres
         const title = getParamValue(parameters.title);
         const day = normalizeDay(getParamValue(parameters.day));
-        const hour = getParamValue(parameters.hour);
+        const hour = getParamValue(parameters.time);
         const minutsRaw = (getParamValue(parameters.minuts) || '').toLowerCase().trim();
 
         // Conversió de minuts
