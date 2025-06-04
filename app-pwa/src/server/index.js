@@ -199,11 +199,39 @@ app.post('/process-dialogflow-voice', async (req, res) => {
         if (result.intent && result.intent.displayName === 'AfegirHorari') {
             const parameters = result.parameters.fields;
 
-            const horari = {
-                title: getParamValue(parameters.title),
-                day: normalizeDay(getParamValue(parameters.day)),
-                time: normalizeTime(getParamValue(parameters.time)),
-            };
+            // Extracció de paràmetres
+        const title = getParamValue(parameters.title);
+        const day = normalizeDay(getParamValue(parameters.day));
+        const hour = getParamValue(parameters.hour);
+        const minutsRaw = (getParamValue(parameters.minuts) || '').toLowerCase().trim();
+
+        // Conversió de minuts
+        let minute = 0;
+        if (minutsRaw.includes('i 15') || minutsRaw.includes('i quinze') || minutsRaw.includes('i quart')) {
+            minute = 15;
+        } else if (minutsRaw.includes('i 30') || minutsRaw.includes('i trenta') || minutsRaw.includes('i mitja')) {
+            minute = 30;
+        } else if (minutsRaw.includes('i 45') || minutsRaw.includes('i quaranta-cinc')) {
+            minute = 45;
+        }
+        
+        console.log('minuts prova', minutsRaw);
+
+
+        // Si només tens l’hora (ex: "10"), converteix-la a "10:00", si tens minuts, "10:15", etc.
+        let time = '';
+        if (hour) {
+            const h = parseInt(hour, 10);
+            const m = parseInt(minute, 10);
+            time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+
+        const horari = {
+            title,
+            day,
+            time,
+        };
+
 
             console.log(`[process-dialogflow-voice] Parámetros extraídos: title: "${horari.title}", day: "${horari.day}", time: "${horari.time}"`);
 
