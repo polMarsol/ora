@@ -66,7 +66,7 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title || !day || !time) return;
-    const newActivity = { title, day, time };
+    const newActivity = { title, day, time, uid: user.uid };
     try {
       const response = await fetch(`${API_BASE_URL}/horaris`, {
         method: 'POST',
@@ -77,6 +77,7 @@ function App() {
       await fetchSchedule();
       setTitle(''); setDay(''); setTime('');
       alert('Activitat afegida correctament!');
+      window.location.reload(); 
     } catch (error) {
       console.error("Error afegint activitat:", error);
       alert('No s\'ha pogut afegir l\'activitat.');
@@ -159,7 +160,7 @@ function App() {
 
         const horaFinal = `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 
-        const newActivity = { title, day, time: horaFinal };
+        const newActivity = { title, day, time: horaFinal, uid: user.uid};
 
         const response = await fetch(`${API_BASE_URL}/horaris`, {
           method: 'POST',

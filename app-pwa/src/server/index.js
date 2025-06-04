@@ -10,6 +10,19 @@ require('dotenv').config(); // Per carregar variables d'entorn des de .env (nom�
 const { SessionsClient } = require('@google-cloud/dialogflow');
 const { v4: uuidv4 } = require('uuid');
 
+const admin = require('firebase-admin');
+
+try {
+  const firebaseServiceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  admin.initializeApp({
+    credential: admin.credential.cert(firebaseServiceAccount),
+  });
+  console.log('🔐 Firebase Admin inicialitzat');
+} catch (e) {
+  console.error('❌ Error inicialitzant Firebase Admin:', e);
+}
+
+
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
@@ -132,12 +145,31 @@ const getParamValue = (paramField) => {
     return paramField.stringValue ?? '';
 };
 
+const authenticateUser = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Token no proporcionat.' });
+    }
+
+    const idToken = authHeader.split('Bearer ')[1];
+
+    try {
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        req.user = decodedToken;
+        next();
+    } catch (error) {
+        console.error('❌ Error verificant token Firebase:', error);
+        res.status(403).json({ error: 'Token invàlid o caducat.' });
+    }
+};
+
 
 // Endpoint per obtenir totes les activitats
-app.get('/horaris', async (req, res) => {
-    console.log('[GET /horaris] Sol·licitud per obtenir tots els horaris.');
+app.get('/horaris', authenticateUser, async (req, res) => {
+    const uid = req.user.uid;
+    console.log(`[GET /horaris] UID: ${uid}`);
     try {
-        const horaris = await db.collection('horaris').find({}).toArray();
+        const horaris = await db.collection('horaris').find({ uid }).toArray();
         res.status(200).json(horaris);
     } catch (error) {
         console.error('[GET /horaris] Error obtenint horaris:', error);
@@ -145,34 +177,39 @@ app.get('/horaris', async (req, res) => {
     }
 });
 
+
 // Endpoint per afegir activitats manualment
-app.post('/horaris', async (req, res) => {
+app.post('/horaris', authenticateUser, async (req, res) => {
     const { title, day, time } = req.body;
-    console.log(`[POST /horaris] Intentant afegir activitat manualment: ${JSON.stringify(req.body)}`);
+    const uid = req.user.uid;
 
     if (!title || !day || !time) {
         return res.status(400).json({ error: 'Títol, dia i hora són obligatoris.' });
     }
 
-    const newActivity = { title, day, time, createdAt: new Date() }; // Opcional: afegir timestamp
+    const newActivity = { title, day, time, createdAt: new Date(), uid };
 
     try {
         const insertResult = await db.collection('horaris').insertOne(newActivity);
-        const addedActivity = { ...newActivity, _id: insertResult.insertedId }; // Retornem la _id generada per MongoDB
-
-        console.log('[POST /horaris] Activitat manualment guardada a MongoDB:', addedActivity);
-        res.status(201).json(addedActivity); // 201 Created
+        res.status(201).json({ ...newActivity, _id: insertResult.insertedId });
     } catch (error) {
-        console.error('[POST /horaris] Error afegint activitat manualment:', error);
-        res.status(500).json({ error: 'Error intern del servidor afegint l\'activitat.' });
+        console.error('[POST /horaris] Error afegint activitat:', error);
+        res.status(500).json({ error: 'Error intern del servidor.' });
     }
 });
+
 
 // Endpoint per processar veu amb Dialogflow
 app.post('/process-dialogflow-voice', async (req, res) => {
     const query = req.body.query;
+    const uid = req.body.uid;
+
     if (!query) {
         return res.status(400).json({ error: 'Query de voz no proporcionada.' });
+    }
+
+    if (!uid) {
+        return res.status(400).json({ error: 'UID de l\'usuari no proporcionat.' });
     }
 
     const sessionId = uuidv4();
@@ -200,79 +237,54 @@ app.post('/process-dialogflow-voice', async (req, res) => {
             const parameters = result.parameters.fields;
 
             // Extracció de paràmetres
-        const title = getParamValue(parameters.title);
-        const day = normalizeDay(getParamValue(parameters.day));
-        const hour = getParamValue(parameters.time);
-        const minutsRaw = (getParamValue(parameters.minuts) || '').toLowerCase().trim();
+            const title = getParamValue(parameters.title);
+            const day = normalizeDay(getParamValue(parameters.day));
+            const hour = getParamValue(parameters.time);
+            const minutsRaw = (getParamValue(parameters.minuts) || '').toLowerCase().trim();
 
-        // Conversió de minuts
-        let minute = 0;
-        if (minutsRaw.includes('i 15') || minutsRaw.includes('i quinze') || minutsRaw.includes('i quart')) {
-            minute = 15;
-        } else if (minutsRaw.includes('i 30') || minutsRaw.includes('i trenta') || minutsRaw.includes('i mitja')) {
-            minute = 30;
-        } else if (minutsRaw.includes('i 45') || minutsRaw.includes('i quaranta-cinc')) {
-            minute = 45;
-        }
-        
-        console.log('minuts prova', minutsRaw," min -> ", minute);
+            let minute = 0;
+            if (minutsRaw.includes('i 15') || minutsRaw.includes('i quinze') || minutsRaw.includes('i quart')) {
+                minute = 15;
+            } else if (minutsRaw.includes('i 30') || minutsRaw.includes('i trenta') || minutsRaw.includes('i mitja')) {
+                minute = 30;
+            } else if (minutsRaw.includes('i 45') || minutsRaw.includes('i quaranta-cinc')) {
+                minute = 45;
+            }
 
+            console.log('minuts prova', minutsRaw, " min -> ", minute);
 
-        // Si només tens l’hora (ex: "10"), converteix-la a "10:00", si tens minuts, "10:15", etc.
-        let time = '';
-        if (hour) {
-            // Mapa per convertir paraules a hores (ja que "deu" no es pot parsejar directament)
-            const hourMapping = {
-                'zero': 0,
-                'una': 1,
-                'dues': 2,
-                'tres': 3,
-                'quatre': 4,
-                'cinc': 5,
-                'sis': 6,
-                'set': 7,
-                'vuit': 8,
-                'nou': 9,
-                'deu': 10,
-                'onze': 11,
-                'dotze': 12,
-                'tretze': 13,
-                'catorze': 14,
-                'quinze': 15,
-                'setze': 16,
-                'disset': 17,
-                'divuit': 18,
-                'dinou': 19,
-                'vint': 20,
-                'vint-i-u': 21,
-                'vint-i-dos': 22,
-                'vint-i-tres': 23,
+            let time = '';
+            if (hour) {
+                const hourMapping = {
+                    'zero': 0, 'una': 1, 'dues': 2, 'tres': 3, 'quatre': 4, 'cinc': 5,
+                    'sis': 6, 'set': 7, 'vuit': 8, 'nou': 9, 'deu': 10, 'onze': 11,
+                    'dotze': 12, 'tretze': 13, 'catorze': 14, 'quinze': 15, 'setze': 16,
+                    'disset': 17, 'divuit': 18, 'dinou': 19, 'vint': 20, 'vint-i-u': 21, 'vint-i-dos': 22, 'vint-i-tres': 23,
+                };
+
+                let h = parseInt(hour, 10);
+                if (isNaN(h)) {
+                    h = hourMapping[hour.toLowerCase()] ?? null;
+                }
+
+                const m = parseInt(minute, 10);
+
+                if (h !== null && !isNaN(m)) {
+                    time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                } else {
+                    console.warn(`[process-dialogflow-voice] Hora no vàlida: hour = "${hour}", h = ${h}, minuts = ${minute}`);
+                    time = '';
+                }
+            }
+
+            const horari = {
+                title,
+                day,
+                time,
+                uid // 🆕 Afegim el UID de l'usuari
             };
 
-
-            let h = parseInt(hour, 10);
-            if (isNaN(h)) {
-                h = hourMapping[hour.toLowerCase()] ?? null;
-            }
-
-            const m = parseInt(minute, 10);
-
-            if (h !== null && !isNaN(m)) {
-                time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-            } else {
-                console.warn(`[process-dialogflow-voice] Hora no vàlida: hour = "${hour}", h = ${h}, minuts = ${minute}`);
-                time = '';
-            }
-        }
-
-        const horari = {
-            title,
-            day,
-            time,
-        };
-
-
-            console.log(`[process-dialogflow-voice] Parámetros extraídos: title: "${horari.title}", day: "${horari.day}", time: "${horari.time}"`);
+            console.log(`[process-dialogflow-voice] Parámetros extraídos: title: "${horari.title}", day: "${horari.day}", time: "${horari.time}", uid: "${horari.uid}"`);
 
             if (!horari.title || !horari.day || !horari.time) {
                 console.warn('[process-dialogflow-voice] Parámetros incompletos recibidos de Dialogflow para guardar:', horari);
@@ -283,13 +295,13 @@ app.post('/process-dialogflow-voice', async (req, res) => {
             }
 
             const insertResult = await db.collection('horaris').insertOne(horari);
-            const addedHorari = { ...horari, _id: insertResult.insertedId }; // Afegim la _id a l'objecte
+            const addedHorari = { ...horari, _id: insertResult.insertedId };
 
             console.log('[process-dialogflow-voice] Horario guardado en MongoDB:', addedHorari);
 
             return res.json({
                 fulfillmentText: result.fulfillmentText || `Activitat "${addedHorari.title}" afegida per ${addedHorari.day} a les ${addedHorari.time}.`,
-                scheduleItem: addedHorari // Retornem l'objecte amb la _id
+                scheduleItem: addedHorari
             });
 
         } else {
@@ -306,31 +318,30 @@ app.post('/process-dialogflow-voice', async (req, res) => {
     }
 });
 
+
 // Endpoint per eliminar activitats
-app.delete('/horaris/:id', async (req, res) => {
+app.delete('/horaris/:id', authenticateUser, async (req, res) => {
     const { id } = req.params;
-    console.log(`[DELETE /horaris/:id] Intentant eliminar l'activitat amb ID: ${id}`);
+    const uid = req.user.uid;
+
+    if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: 'ID d\'activitat invàlid.' });
+    }
 
     try {
-        if (!ObjectId.isValid(id)) {
-            console.warn(`[DELETE /horaris/:id] ID invàlid: ${id}`);
-            return res.status(400).json({ error: 'ID d\'activitat invàlid.' });
-        }
-
-        const result = await db.collection('horaris').deleteOne({ _id: new ObjectId(id) });
+        const result = await db.collection('horaris').deleteOne({ _id: new ObjectId(id), uid });
 
         if (result.deletedCount === 1) {
-            console.log(`[DELETE /horaris/:id] Activitat amb ID ${id} eliminada correctament.`);
             res.status(200).json({ message: 'Activitat eliminada correctament.' });
         } else {
-            console.warn(`[DELETE /horaris/:id] No s'ha trobat l'activitat amb ID ${id}.`);
-            res.status(404).json({ error: 'Activitat no trobada.' });
+            res.status(404).json({ error: 'Activitat no trobada o no autoritzat.' });
         }
     } catch (error) {
-        console.error(`[DELETE /horaris/:id] Error eliminant l'activitat amb ID ${id}:`, error);
-        res.status(500).json({ error: 'Error intern del servidor al eliminar l\'activitat.' });
+        console.error('[DELETE /horaris/:id] Error:', error);
+        res.status(500).json({ error: 'Error intern del servidor.' });
     }
 });
+
 
 // Endpoint de Webhook (per a crides directes de Dialogflow si tens el webhook habilitat)
 app.post('/webhook', async (req, res) => {
