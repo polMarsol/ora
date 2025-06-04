@@ -2,5 +2,10 @@
   "dependencies": {
     "dialogflow": "^1.2.0",
     "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.4",
+    "tailwindcss": "^4.1.8"
   }
 }
