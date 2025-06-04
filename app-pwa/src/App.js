@@ -318,18 +318,18 @@ const startVoiceInput = () => {
     boxSizing: 'border-box'
   }}>
     <h2 style={{ marginBottom: '15px', color: '#0056b3', textAlign: 'center' }}>Registrar Nova Activitat Manual</h2>
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '100%' }}>
+    <form onSubmit={handleManualFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '100%' }}>
       <input
         type="text"
         placeholder="Títol"
-        value={title}
-        onChange={e => setTitle(e.target.value)}
+        value={manualActivityTitle}
+        onChange={e => setManualActivityTitle(e.target.value)}
         required
         style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
       />
       <select
-        value={day}
-        onChange={e => setDay(e.target.value)}
+        value={manualActivityDay}
+        onChange={e => setManualActivityDay(e.target.value)}
         required
         style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
       >
@@ -344,8 +344,8 @@ const startVoiceInput = () => {
       </select>
       <input
         type="time"
-        value={time}
-        onChange={e => setTime(e.target.value)}
+        value={manualActivityTime}
+        onChange={e => setManualActivityTime(e.target.value)}
         required
         style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
       />

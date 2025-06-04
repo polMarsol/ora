@@ -176,24 +176,24 @@ app.get('/horaris', async (req, res) => {
 
 
 
-// Endpoint per afegir activitats manualment
-app.post('/horaris', authenticateUser, async (req, res) => {
-    const { title, day, time } = req.body;
-    const uid = req.user.uid;
+// Abans (requereix token!)
+// app.post('/horaris', authenticateUser, async (req, res) => {
+app.post('/horaris', async (req, res) => {
+  const { title, day, time, uid } = req.body;
 
-    if (!title || !day || !time) {
-        return res.status(400).json({ error: 'Títol, dia i hora són obligatoris.' });
-    }
+  if (!title || !day || !time || !uid) {
+    return res.status(400).json({ error: 'Títol, dia, hora i uid són obligatoris.' });
+  }
 
-    const newActivity = { title, day, time, createdAt: new Date(), uid };
+  const newActivity = { title, day, time, createdAt: new Date(), uid };
 
-    try {
-        const insertResult = await db.collection('horaris').insertOne(newActivity);
-        res.status(201).json({ ...newActivity, _id: insertResult.insertedId });
-    } catch (error) {
-        console.error('[POST /horaris] Error afegint activitat:', error);
-        res.status(500).json({ error: 'Error intern del servidor.' });
-    }
+  try {
+    const insertResult = await db.collection('horaris').insertOne(newActivity);
+    res.status(201).json({ ...newActivity, _id: insertResult.insertedId });
+  } catch (error) {
+    console.error('[POST /horaris] Error afegint activitat:', error);
+    res.status(500).json({ error: 'Error intern del servidor.' });
+  }
 });
 
 
