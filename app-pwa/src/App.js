@@ -35,6 +35,9 @@ function App() {
   const [pendingVoiceQuery, setPendingVoiceQuery] = useState(null); // Guardarà la transcripció de l'àudio
   const [showVoiceConfirmation, setShowVoiceConfirmation] = useState(false); // Controlar la visibilitat dels botons
 
+  // Nou estat per mostrar/ocultar el diàleg d'ajuda
+  const [showVoiceHelp, setShowVoiceHelp] = useState(false);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -155,41 +158,52 @@ const handleDelete = async (idToDelete) => {
   }
 };
 
-  const startVoiceInput = () => {
-    if (!user || !user.uid) {
-      toast.error('Cal iniciar sessió per afegir activitats per veu.');
-      return;
-    }
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      toast.error('El navegador no suporta reconeixement de veu.');
-      return;
-    }
+const startVoiceInput = () => {
+  if (!user || !user.uid) {
+    toast.error('Cal iniciar sessió per afegir activitats per veu.');
+    return;
+  }
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    toast.error('El navegador no suporta reconeixement de veu.');
+    return;
+  }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'ca-ES';
-    recognition.start();
-    toast.info('Escoltant... digues "[dia] a les [hora] - [títol de l\'activitat]" per afegir una activitat.');
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'ca-ES';
+  recognition.start();
+  toast.info('Escoltant...');
 
-    recognition.onresult = async (event) => {
-      const transcript = event.results[0][0].transcript.toLowerCase();
+  recognition.onresult = async (event) => {
+    const transcript = event.results[0][0].transcript.toLowerCase();
 
-    if (
-      transcript.includes('quin és el meu horari') ||
-      transcript.includes('que tinc') ||
-      transcript.includes('quines activitats tinc') ||
-      transcript.includes('horari')
-    ) {
-      toast.info('Recitant les teves activitats.');
-      if (schedule.length === 0) {
-        const utter = new window.SpeechSynthesisUtterance('No tens cap activitat programada.');
+    // Dies de la setmana en català
+    const diesSetmana = [
+      'diumenge', 'dilluns', 'dimarts', 'dimecres', 'dijous', 'divendres', 'dissabte'
+    ];
+
+    if (transcript.includes('quines pràctiques tinc')) {
+      window.open('https://entregasudl.live/igualada', '_blank');
+      setPendingVoiceQuery(null);
+      setShowVoiceConfirmation(false);
+    return;
+  }
+
+    // Comprova si la frase és "que tinc [dia]"
+    const match = transcript.match(/què tinc el\s+(diumenge|dilluns|dimarts|dimecres|dijous|divendres|dissabte)/i);
+    if (match) {
+      const dia = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+      const activitatsDia = schedule.filter(item => item.day?.toLowerCase() === dia.toLowerCase());
+      if (activitatsDia.length === 0) {
+        const utter = new window.SpeechSynthesisUtterance(`Oh no, noooo, la polizia. No tens cap activitat programada el ${dia}.` + user.email.split('@')[0].trim());
         utter.lang = 'ca-ES';
         window.speechSynthesis.speak(utter);
       } else {
-        const text = schedule
-          .map(item => `${item.day}, a les ${item.time}, ${item.title}`)
+        const text = activitatsDia
+          .map(item => `a les ${item.time}, ${item.title}`)
           .join('. ');
-        const utter = new window.SpeechSynthesisUtterance(user.email.split('@')[0].trim()+' Les teves activitats són: ' + text);
+        toast.info(`Recitant les teves activitats del ${dia}.`);
+        const utter = new window.SpeechSynthesisUtterance(`Hola de nou,` +user.email.split('@')[0].trim()+ `. Les teves activitats el ${dia} són: ${text}`);
         utter.lang = 'ca-ES';
         window.speechSynthesis.speak(utter);
       }
@@ -198,17 +212,42 @@ const handleDelete = async (idToDelete) => {
       return;
     }
 
-      setPendingVoiceQuery(transcript);
-      setShowVoiceConfirmation(true);
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Error reconeixement:', event.error);
-      toast.error('Error reconeixement: ' + event.error);
-      setPendingVoiceQuery(null); // Reseteja l'estat en cas d'error
+    // Consulta general d'horari
+    if (
+      transcript.includes('quin és el meu horari') ||
+      transcript.includes('que tinc') ||
+      transcript.includes('quines activitats tinc') ||
+      transcript.includes('horari')
+    ) {
+      toast.info('Recitant les teves activitats.');
+      if (schedule.length === 0) {
+        const utter = new window.SpeechSynthesisUtterance('Oh no! No tens cap activitat programada. Si vol afegir-ne una, digues "Afegeix una activitat".' + user.email.split('@')[0].trim());
+        utter.lang = 'ca-ES';
+        window.speechSynthesis.speak(utter);
+      } else {
+        const text = schedule
+          .map(item => `${item.day}, a les ${item.time}, ${item.title}`)
+          .join('. ');
+        const utter = new window.SpeechSynthesisUtterance(`Benvingut de nou` + user.email.split('@')[0].trim()+'. Les teves activitats són: ' + text);
+        utter.lang = 'ca-ES';
+        window.speechSynthesis.speak(utter);
+      }
+      setPendingVoiceQuery(null);
       setShowVoiceConfirmation(false);
-    };
+      return;
+    }
+
+    setPendingVoiceQuery(transcript);
+    setShowVoiceConfirmation(true);
   };
+
+  recognition.onerror = (event) => {
+    console.error('Error reconeixement:', event.error);
+    toast.error('Error reconeixement: ' + event.error);
+    setPendingVoiceQuery(null);
+    setShowVoiceConfirmation(false);
+  };
+};
 
   const confirmVoiceInput = async () => {
     if (!pendingVoiceQuery || !user) return;
@@ -307,9 +346,60 @@ const handleDelete = async (idToDelete) => {
   if (loadingAuth) return <div style={{ padding: '20px', textAlign: 'center' }}><h1>Carregant usuari...</h1></div>;
 
   return (
-    <div style={{ padding: '20px', maxWidth: '900px', margin: 'auto', fontFamily: 'Inter, sans-serif' }}>
+    <div style={{ padding: '20px', maxWidth: '900px', margin: 'auto', fontFamily: 'Inter, sans-serif', position: 'relative' }}>
       <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
 
+      {/* Botó d'informació a dalt a la dreta */}
+      <button
+        onClick={() => setShowVoiceHelp(true)}
+        style={{
+          position: 'absolute',
+          top: 20,
+          right: 20,
+          background: '#007bff',
+          color: 'white',
+          border: 'none',
+          borderRadius: '50%',
+          width: '40px',
+          height: '40px',
+          fontSize: '1.5em',
+          cursor: 'pointer',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        }}
+        aria-label="Ajuda comandes de veu"
+        title="Ajuda comandes de veu"
+      >i</button>
+
+      {/* Diàleg d'ajuda de comandes de veu */}
+      {showVoiceHelp && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(0,0,0,0.3)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{
+            background: 'white', padding: '30px 20px', borderRadius: '12px', maxWidth: '400px', width: '90%',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.15)', position: 'relative'
+          }}>
+            <button
+              onClick={() => setShowVoiceHelp(false)}
+              style={{
+                position: 'absolute', top: 10, right: 15, background: 'none', border: 'none', fontSize: '1.5em', color: '#888', cursor: 'pointer'
+              }}
+              aria-label="Tancar ajuda"
+            >&times;</button>
+            <h2 style={{ marginTop: 0, color: '#007bff', textAlign: 'center' }}>ℹ️ Comandes de veu</h2>
+            <ul style={{ paddingLeft: '20px', color: '#333', fontSize: '1em' }}>
+              <li><b>Afegir activitat:</b> <br /> <i>dilluns a les 10 matemàtiques</i></li>
+              <li><b>Consultar tot l'horari:</b> <br /> <i>quin és el meu horari</i>, <i>quines activitats tinc</i>, <i>horari</i></li>
+              <li><b>Consultar activitats d'un dia:</b> <br /> <i>que tinc dilluns</i>, <i>que tinc dimarts</i>, ...</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
+      
       <h1 style={{ textAlign: 'center', color: '#333' }}>🕒 Ora - Gestor d'Horaris 2.0</h1>
 
       {!user ? (
