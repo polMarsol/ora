@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'moment/locale/ca';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 import { auth } from './firebaseConfig';
 import {
@@ -18,19 +20,20 @@ const API_BASE_URL = 'https://ora-28jb.onrender.com';
 
 function App() {
   const [schedule, setSchedule] = useState([]);
-  const [title, setTitle] = useState('');
-  const [day, setDay] = useState('');
-  const [time, setTime] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
 
-  // New states for the toggleable manual form
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualActivityTitle, setManualActivityTitle] = useState('');
   const [manualActivityDay, setManualActivityDay] = useState('');
   const [manualActivityTime, setManualActivityTime] = useState('');
+
+  // Nous estats per a la confirmació de veu
+  const [pendingVoiceQuery, setPendingVoiceQuery] = useState(null); // Guardarà la transcripció de l'àudio
+  const [showVoiceConfirmation, setShowVoiceConfirmation] = useState(false); // Controlar la visibilitat dels botons
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -40,12 +43,19 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-const fetchSchedule = async () => {
+const fetchSchedule = useCallback(async () => {
+  if (!user) {
+    setSchedule([]);
+    return;
+  }
+  setLoadingSchedule(true);
   try {
+    const token = await user.getIdToken();
     const response = await fetch(`${API_BASE_URL}/horaris`, {
       headers: {
         'Content-Type': 'application/json',
-        'uid': user?.uid || ''
+        'Authorization': `Bearer ${token}`,
+        'uid': user.uid // <-- AFEGEIX AIXÒ!
       }
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -55,160 +65,173 @@ const fetchSchedule = async () => {
     console.error("Error carregant horaris:", error);
     const saved = localStorage.getItem('schedule');
     setSchedule(saved ? JSON.parse(saved) : []);
-    alert('No s\'han pogut carregar els horaris del servidor. S\'usaran dades locals si hi ha.');
+    toast.error('No s\'han pogut carregar els horaris del servidor. S\'usaran dades locals si hi ha.');
+  } finally {
+    setLoadingSchedule(false);
   }
-};
-
-
+}, [user]);
 
   useEffect(() => {
-    if (user) fetchSchedule();
-    else setSchedule([]);
-  }, [user]);
+    if (user) {
+      fetchSchedule();
+    } else {
+      setSchedule([]);
+    }
+  }, [user, fetchSchedule]);
 
   useEffect(() => {
     localStorage.setItem('schedule', JSON.stringify(schedule));
   }, [schedule]);
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  if (!title || !day || !time) return;
-  const newActivity = { title, day, time, uid: user.uid };
-  try {
-    const response = await fetch(`${API_BASE_URL}/horaris`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newActivity)
-    });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    await fetchSchedule();
-    setTitle(''); setDay(''); setTime('');
-    alert('Activitat afegida correctament!');
-  } catch (error) {
-    console.error("Error afegint activitat:", error);
-    alert('No s\'ha pogut afegir l\'activitat.');
-  }
-};
+  const handleManualFormSubmit = async (e) => {
+    e.preventDefault();
+    if (!manualActivityTitle || !manualActivityDay || !manualActivityTime) {
+      toast.warn('Si us plau, omple tots els camps per a l\'activitat manual.');
+      return;
+    }
+    if (!user) {
+      toast.error('Cal iniciar sessió per afegir activitats.');
+      return;
+    }
 
-// ...existing code...
-
-const handleManualFormSubmit = async (e) => {
-  e.preventDefault();
-  if (!manualActivityTitle || !manualActivityDay || !manualActivityTime) return;
-  const newActivity = {
-    title: manualActivityTitle,
-    day: manualActivityDay,
-    time: manualActivityTime,
-    uid: user.uid
-  };
-  try {
-    const token = await user.getIdToken(); // Obté el token de l'usuari autenticat
-    const response = await fetch(`${API_BASE_URL}/horaris`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(newActivity)
-    });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    await fetchSchedule();
-    setManualActivityTitle('');
-    setManualActivityDay('');
-    setManualActivityTime('');
-    setShowManualForm(false);
-    alert('Activitat manual afegida correctament!');
-  } catch (error) {
-    console.error("Error afegint activitat manual:", error);
-    alert('No s\'ha pogut afegir l\'activitat manual.');
-  }
-};
-
-const handleDelete = async (idToDelete) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/horaris/${idToDelete}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', 'uid': user?.uid || '' }
-    });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    await fetchSchedule();
-    alert('Activitat eliminada correctament!');
-  } catch (error) {
-    console.error("Error eliminant activitat:", error);
-    alert('No s\'ha pogut eliminar l\'activitat.');
-  }
-};
-
-
-const startVoiceInput = () => {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) return alert('El navegador no suporta reconeixement de veu.');
-
-  const recognition = new SpeechRecognition();
-  recognition.lang = 'ca-ES';
-  recognition.start();
-
-  recognition.onresult = async (event) => {
-    const transcript = event.results[0][0].transcript.toLowerCase();
-    alert('Has dit: ' + transcript);
-
+    const newActivity = {
+      title: manualActivityTitle,
+      day: manualActivityDay,
+      time: manualActivityTime,
+      uid: user.uid
+    };
     try {
-      const resposta = await fetch(`${API_BASE_URL}/process-dialogflow-voice`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ query: transcript, uid: user.uid }) // <-- Afegeix el uid aquí!
-      });
-
-      const data = await resposta.json();
-      const { title, day, hour, minuts } = data?.scheduleItem || {};
-
-      if (!title || !day || !hour) {
-        alert(data.fulfillmentText || 'Falten dades per afegir l\'activitat.');
-        return;
-      }
-
-      let minutes = 0;
-      if (minuts) {
-        const m = minuts.toString().toLowerCase();
-        if (['15', 'quinze', 'quart'].includes(m)) minutes = 15;
-        else if (['30', 'trenta', 'mitja'].includes(m)) minutes = 30;
-        else if (['45', 'quaranta-cinc'].includes(m)) minutes = 45;
-      }
-
-      const horaFinal = `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-
-      const newActivity = { title, day, time: horaFinal, uid: user.uid };
-
+      const token = await user.getIdToken();
       const response = await fetch(`${API_BASE_URL}/horaris`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(newActivity)
       });
-
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.error}`);
+      }
       await fetchSchedule();
-      alert(data.fulfillmentText || 'Activitat afegida!');
-    } catch (err) {
-      console.error('Error veu:', err);
-      alert('Error en processar veu.');
+      setManualActivityTitle('');
+      setManualActivityDay('');
+      setManualActivityTime('');
+      setShowManualForm(false);
+      toast.success('Activitat manual afegida correctament!');
+    } catch (error) {
+      console.error("Error afegint activitat manual:", error);
+      toast.error(`No s'ha pogut afegir l'activitat manual: ${error.message}`);
     }
   };
 
-  recognition.onerror = (event) => {
-    console.error('Error reconeixement:', event.error);
-    alert('Error reconeixement: ' + event.error);
-  };
+const handleDelete = async (idToDelete) => {
+  if (!user) {
+    toast.error('Cal iniciar sessió per eliminar activitats.');
+    return;
+  }
+  if (window.confirm('Estàs segur que vols eliminar aquesta activitat?')) {
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch(`${API_BASE_URL}/horaris/${idToDelete}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'uid': user.uid // <-- AFEGEIX AIXÒ!
+        }
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.error}`);
+      }
+      await fetchSchedule();
+      toast.success('Activitat eliminada correctament!');
+    } catch (error) {
+      console.error("Error eliminant activitat:", error);
+      toast.error(`No s'ha pogut eliminar l'activitat: ${error.message}`);
+    }
+  }
 };
+
+  const startVoiceInput = () => {
+    if (!user || !user.uid) {
+      toast.error('Cal iniciar sessió per afegir activitats per veu.');
+      return;
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error('El navegador no suporta reconeixement de veu.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ca-ES';
+    recognition.start();
+    toast.info('Escoltant... digues "[dia] a les [hora] - [títol de l\'activitat]" per afegir una activitat.');
+
+    recognition.onresult = async (event) => {
+      const transcript = event.results[0][0].transcript.toLowerCase();
+      // Mostra la transcripció i els botons de confirmació
+      setPendingVoiceQuery(transcript);
+      setShowVoiceConfirmation(true);
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Error reconeixement:', event.error);
+      toast.error('Error reconeixement: ' + event.error);
+      setPendingVoiceQuery(null); // Reseteja l'estat en cas d'error
+      setShowVoiceConfirmation(false);
+    };
+  };
+
+  // Nova funció per gestionar la confirmació de veu
+  const confirmVoiceInput = async () => {
+    if (!pendingVoiceQuery || !user) return;
+
+    try {
+      const token = await user.getIdToken();
+      const resposta = await fetch(`${API_BASE_URL}/process-dialogflow-voice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ query: pendingVoiceQuery, uid: user.uid })
+      });
+
+      const data = await resposta.json();
+      const { title, day, time } = data?.scheduleItem || {};
+
+      if (!title || !day || !time) {
+        toast.warn(data.fulfillmentText || 'Falten dades per afegir l\'activitat.');
+      } else {
+        await fetchSchedule();
+        toast.success(data.fulfillmentText || 'Activitat afegida!');
+      }
+    } catch (err) {
+      console.error('Error processant veu confirmada:', err);
+      toast.error('Error en processar la veu confirmada: ' + err.message);
+    } finally {
+      setPendingVoiceQuery(null); // Neteja l'estat
+      setShowVoiceConfirmation(false); // Amaga els botons
+    }
+  };
+
+  const cancelVoiceInput = () => {
+    setPendingVoiceQuery(null); // Neteja l'estat
+    setShowVoiceConfirmation(false); // Amaga els botons
+    toast.info('Activitat de veu cancel·lada.');
+  };
 
   const handleRegister = async (e) => {
     e.preventDefault();
     try {
       await createUserWithEmailAndPassword(auth, email, password);
-      alert('Registre completat!');
+      toast.success('Registre completat!');
     } catch (error) {
-      alert(`Error al registrar-se: ${error.message}`);
+      toast.error(`Error al registrar-se: ${error.message}`);
     }
   };
 
@@ -216,31 +239,25 @@ const startVoiceInput = () => {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      alert('Sessió iniciada!');
+      toast.success('Sessió iniciada!');
     } catch (error) {
-      alert(`Error a l'iniciar sessió: ${error.message}`);
+      toast.error(`Error a l'iniciar sessió: ${error.message}`);
     }
   };
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      alert('Sessió tancada.');
+      toast.info('Sessió tancada.');
       setSchedule([]);
     } catch (error) {
-      alert(`Error al tancar sessió: ${error.message}`);
+      toast.error(`Error al tancar sessió: ${error.message}`);
     }
   };
 
   const events = schedule.map(item => {
     const dayMap = {
-      'diumenge': 0,
-      'dilluns': 1,
-      'dimarts': 2,
-      'dimecres': 3,
-      'dijous': 4,
-      'divendres': 5,
-      'dissabte': 6
+      'diumenge': 0, 'dilluns': 1, 'dimarts': 2, 'dimecres': 3, 'dijous': 4, 'divendres': 5, 'dissabte': 6
     };
     const dayOfWeekNum = dayMap[item.day?.toLowerCase()];
     if (dayOfWeekNum === undefined || !item.time || !/^\d{2}:\d{2}$/.test(item.time)) return null;
@@ -248,9 +265,8 @@ const startVoiceInput = () => {
     const [hours, minutes] = item.time.split(':').map(Number);
     let targetMoment = moment().day(dayOfWeekNum).hours(hours).minutes(minutes).seconds(0);
 
-    // Si ja ha passat aquest moment, avança una setmana
     if (targetMoment.isBefore(moment())) {
-      targetMoment.add(1, 'week');
+      targetMoment = targetMoment.add(1, 'week');
     }
 
     const startDateTime = targetMoment.toDate();
@@ -267,11 +283,10 @@ const startVoiceInput = () => {
 
   if (loadingAuth) return <div style={{ padding: '20px', textAlign: 'center' }}><h1>Carregant usuari...</h1></div>;
 
-  // Toggle manual form
-  const toggleManualForm = () => setShowManualForm(!showManualForm);
-
   return (
     <div style={{ padding: '20px', maxWidth: '900px', margin: 'auto', fontFamily: 'Inter, sans-serif' }}>
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover />
+
       <h1 style={{ textAlign: 'center', color: '#333' }}>🕒 Ora - Gestor d'Horaris 2.0</h1>
 
       {!user ? (
@@ -298,111 +313,110 @@ const startVoiceInput = () => {
               🎙️ Afegeix per veu
             </button>
 
+            {showVoiceConfirmation && pendingVoiceQuery && (
+              <div style={{
+                marginTop: '10px',
+                padding: '15px',
+                background: '#fff3cd', // Color groc clar
+                border: '1px solid #ffeeba',
+                borderRadius: '8px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                textAlign: 'center',
+                animation: 'fadeIn 0.3s ease-out forwards',
+              }}>
+                <p style={{ margin: '0 0 10px 0', fontWeight: 'bold', color: '#856404' }}>
+                  Has dit: "{pendingVoiceQuery}"
+                </p>
+                <p style={{ margin: '0 0 15px 0', color: '#856404' }}>
+                  És correcte?
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                  <button
+                    onClick={confirmVoiceInput}
+                    style={{ background: '#28a745', color: 'white', padding: '10px 20px', borderRadius: '4px', border: 'none', cursor: 'pointer', transition: 'background 0.3s ease' }}
+                  >
+                    ✅ Acceptar
+                  </button>
+                  <button
+                    onClick={cancelVoiceInput}
+                    style={{ background: '#dc3545', color: 'white', padding: '10px 20px', borderRadius: '4px', border: 'none', cursor: 'pointer', transition: 'background 0.3s ease' }}
+                  >
+                    ❌ Cancel·lar
+                  </button>
+                </div>
+              </div>
+            )}
+
             <button
-              onClick={toggleManualForm}
+              onClick={() => setShowManualForm(!showManualForm)}
               style={{ padding: '12px 20px', background: '#6f42c1', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '1em', fontWeight: 'bold', transition: 'background 0.3s ease', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
             >
               {showManualForm ? 'Amagar Formulari d\'Activitat Manual' : 'Afegir Nova Activitat Manual'}
             </button>
 
-{showManualForm && (
-  <div style={{
-    marginTop: '20px',
-    padding: '15px',
-    background: '#e6f7ff',
-    border: '1px solid #91d5ff',
-    borderRadius: '8px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    animation: 'fadeIn 0.3s ease-out forwards',
-    maxWidth: '100%',
-    boxSizing: 'border-box'
-  }}>
-    <h2 style={{ marginBottom: '15px', color: '#0056b3', textAlign: 'center' }}>Registrar Nova Activitat Manual</h2>
-    <form onSubmit={handleManualFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '100%' }}>
-      <input
-        type="text"
-        placeholder="Títol"
-        value={manualActivityTitle}
-        onChange={e => setManualActivityTitle(e.target.value)}
-        required
-        style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
-      />
-      <select
-        value={manualActivityDay}
-        onChange={e => setManualActivityDay(e.target.value)}
-        required
-        style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
-      >
-        <option value="">Selecciona el dia</option>
-        <option value="Dilluns">Dilluns</option>
-        <option value="Dimarts">Dimarts</option>
-        <option value="Dimecres">Dimecres</option>
-        <option value="Dijous">Dijous</option>
-        <option value="Divendres">Divendres</option>
-        <option value="Dissabte">Dissabte</option>
-        <option value="Diumenge">Diumenge</option>
-      </select>
-      <input
-        type="time"
-        value={manualActivityTime}
-        onChange={e => setManualActivityTime(e.target.value)}
-        required
-        style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
-      />
-      <button
-        type="submit"
-        style={{ background: '#28a745', color: 'white', padding: '10px 15px', borderRadius: '4px', border: 'none', cursor: 'pointer', transition: 'background 0.3s ease' }}
-      >
-        Afegir manualment
-      </button>
-    </form>
-  </div>
-)}
+            {showManualForm && (
+              <div style={{
+                marginTop: '20px', padding: '15px', background: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: '8px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)', animation: 'fadeIn 0.3s ease-out forwards', maxWidth: '100%', boxSizing: 'border-box'
+              }}>
+                <h2 style={{ marginBottom: '15px', color: '#0056b3', textAlign: 'center' }}>Registrar Nova Activitat Manual</h2>
+                <form onSubmit={handleManualFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '100%' }}>
+                  <input type="text" placeholder="Títol" value={manualActivityTitle} onChange={e => setManualActivityTitle(e.target.value)} required
+                    style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
+                  />
+                  <select value={manualActivityDay} onChange={e => setManualActivityDay(e.target.value)} required
+                    style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
+                  >
+                    <option value="">Selecciona el dia</option>
+                    <option value="Dilluns">Dilluns</option>
+                    <option value="Dimarts">Dimarts</option>
+                    <option value="Dimecres">Dimecres</option>
+                    <option value="Dijous">Dijous</option>
+                    <option value="Divendres">Divendres</option>
+                    <option value="Dissabte">Dissabte</option>
+                    <option value="Diumenge">Diumenge</option>
+                  </select>
+                  <input type="time" value={manualActivityTime} onChange={e => setManualActivityTime(e.target.value)} required
+                    style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', boxSizing: 'border-box' }}
+                  />
+                  <button type="submit"
+                    style={{ background: '#28a745', color: 'white', padding: '10px 15px', borderRadius: '4px', border: 'none', cursor: 'pointer', transition: 'background 0.3s ease' }}
+                  >
+                    Afegir manualment
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
 
-<div style={{
-  height: '700px',
-  marginTop: '30px',
-  border: '1px solid #ccc',
-  borderRadius: '8px',
-  padding: '10px',
-  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-  display: 'flex',
-  flexDirection: 'column'
-}}>
-  <h2 style={{ marginBottom: '15px', color: '#555' }}>Calendari</h2>
-  <div style={{ flex: 1, minHeight: 0 }}>
-    <Calendar
-      localizer={localizer}
-      events={events}
-      startAccessor="start"
-      endAccessor="end"
-      titleAccessor="title"
-      style={{ height: '100%', width: '100%' }}
-      culture="ca"
-      messages={{
-        allDay: 'Tot el dia',
-        previous: 'Anterior',
-        next: 'Següent',
-        today: 'Avui',
-        month: 'Mes',
-        week: 'Setmana',
-        day: 'Dia',
-        agenda: 'Agenda',
-        date: 'Data',
-        time: 'Hora',
-        event: 'Esdeveniment',
-        noEventsInRange: 'No hi ha esdeveniments.',
-        showMore: total => `+ ${total} més`,
-      }}
-      onSelectEvent={event => alert(`Activitat: ${event.title}\nData: ${moment(event.start).format('LLLL')}`)}
-    />
-  </div>
-</div>
+          <div style={{ height: '700px', marginTop: '30px', border: '1px solid #ccc', borderRadius: '8px', padding: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column' }}>
+            <h2 style={{ marginBottom: '15px', color: '#555' }}>Calendari</h2>
+            {loadingSchedule ? (
+                <div style={{ textAlign: 'center', padding: '20px' }}>Carregant horaris...</div>
+            ) : (
+                <div style={{ flex: 1, minHeight: 0 }}>
+                    <Calendar
+                        localizer={localizer}
+                        events={events}
+                        startAccessor="start"
+                        endAccessor="end"
+                        titleAccessor="title"
+                        style={{ height: '100%', width: '100%' }}
+                        culture="ca"
+                        messages={{
+                            allDay: 'Tot el dia', previous: 'Anterior', next: 'Següent', today: 'Avui', month: 'Mes',
+                            week: 'Setmana', day: 'Dia', agenda: 'Agenda', date: 'Data', time: 'Hora', event: 'Esdeveniment',
+                            noEventsInRange: 'No hi ha esdeveniments.', showMore: total => `+ ${total} més`,
+                        }}
+                        onSelectEvent={event => toast.info(`Activitat: ${event.title}\nData: ${moment(event.start).format('LLLL')}`)}
+                    />
+                </div>
+            )}
+          </div>
 
           <h2 style={{ marginTop: '30px', color: '#555' }}>Llista d'Activitats</h2>
           <ul style={{ listStyle: 'none', padding: 0 }}>
-            {schedule.length === 0 ? (
+            {schedule.length === 0 && !loadingSchedule ? (
               <li style={{ padding: '15px', color: '#888', textAlign: 'center', fontStyle: 'italic' }}>
                 No hi ha activitats.
               </li>
@@ -419,14 +433,8 @@ const startVoiceInput = () => {
       )}
       <style>{`
         @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>
