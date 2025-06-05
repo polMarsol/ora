@@ -366,5 +366,20 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
+// Nou endpoint per obtenir l'horari segons el curs
+app.get('/api/schedule', async (req, res) => {
+  try {
+    const curso = parseInt(req.query.curso, 10);
+    if (!curso) return res.status(400).json({ error: 'Falta el paràmetre curso' });
+
+    const doc = await db.collection('schedule').findOne({ curso });
+    if (!doc) return res.status(404).json({ error: 'No s\'ha trobat horari' });
+
+    res.json(doc);
+  } catch (err) {
+    res.status(500).json({ error: 'Error accedint a MongoDB' });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Servidor actiu al port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor actiu al port ${PORT}`)); 
