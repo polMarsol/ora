@@ -6,6 +6,8 @@ import 'moment/locale/ca';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
+import UniSchedule from './UniSchedule.js';
+
 import { auth } from './firebaseConfig';
 import {
   createUserWithEmailAndPassword,
@@ -31,6 +33,8 @@ function App() {
   const [manualActivityDay, setManualActivityDay] = useState('');
   const [manualActivityTime, setManualActivityTime] = useState('');
 
+  const [showUniSchedule, setShowUniSchedule] = useState(false);
+  
   // Nous estats per a la confirmació de veu
   const [pendingVoiceQuery, setPendingVoiceQuery] = useState(null); // Guardarà la transcripció de l'àudio
   const [showVoiceConfirmation, setShowVoiceConfirmation] = useState(false); // Controlar la visibilitat dels botons
@@ -186,8 +190,16 @@ const startVoiceInput = () => {
       window.open('https://entregasudl.live/igualada', '_blank');
       setPendingVoiceQuery(null);
       setShowVoiceConfirmation(false);
-    return;
-  }
+      return;
+    }
+
+if (transcript.includes('horari uni') || transcript.includes('quin és el meu horari')) {
+  toast.info('Obrint horari universitari...');
+  setShowUniSchedule(true);
+  setPendingVoiceQuery(null);
+  setShowVoiceConfirmation(false);
+  return;
+}
 
     // Comprova si la frase és "que tinc [dia]"
     const match = transcript.match(/què tinc el\s+(diumenge|dilluns|dimarts|dimecres|dijous|divendres|dissabte)/i);
@@ -221,7 +233,7 @@ const startVoiceInput = () => {
     ) {
       toast.info('Recitant les teves activitats.');
       if (schedule.length === 0) {
-        const utter = new window.SpeechSynthesisUtterance('Oh no! No tens cap activitat programada. Si vol afegir-ne una, digues "Afegeix una activitat".' + user.email.split('@')[0].trim());
+        const utter = new window.SpeechSynthesisUtterance('Oh no! No tens cap activitat programada.' );
         utter.lang = 'ca-ES';
         window.speechSynthesis.speak(utter);
       } else {
@@ -542,6 +554,29 @@ const startVoiceInput = () => {
               ))
             )}
           </ul>
+
+          {showUniSchedule && (
+  <div style={{
+    position: 'fixed',
+    top: 0, left: 0, width: '100vw', height: '100vh',
+    background: 'rgba(0,0,0,0.4)', zIndex: 2000,
+    display: 'flex', alignItems: 'center', justifyContent: 'center'
+  }}>
+    <div style={{
+      background: 'white', padding: '30px 20px', borderRadius: '16px', maxWidth: '900px', width: '95%',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.25)', position: 'relative'
+    }}>
+      <button
+        onClick={() => setShowUniSchedule(false)}
+        style={{
+          position: 'absolute', top: 10, right: 15, background: 'none', border: 'none', fontSize: '2em', color: '#888', cursor: 'pointer'
+        }}
+        aria-label="Tancar horari universitari"
+      >&times;</button>
+      <UniSchedule />
+    </div>
+  </div>
+)}
         </div>
       )}
       <style>{`

@@ -1,7 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const { MongoClient, ObjectId } = require('mongodb'); // <-- IMPORTANT: AFEGEIX ObjectId aquí
 const cors = require('cors');
+const { MongoClient, ObjectId } = require('mongodb'); // <-- IMPORTANT: AFEGEIX ObjectId aquí
 // Importem 'fs' i 'path' per a la gestió de fitxers de credencials
 const fs = require('fs');
 const path = require('path');
@@ -28,7 +28,7 @@ app.use(bodyParser.json());
 app.use(cors());
 
 const uri = process.env.MONGO_URI;
-const client = new MongoClient(uri);
+const client = new MongoClient(uri, { useUnifiedTopology: true });
 let db;
 
 // Funció per connectar a MongoDB
@@ -146,7 +146,6 @@ const getParamValue = (paramField) => {
 };
 
 
-
 // Endpoint per obtenir totes les activitats
 app.get('/horaris', async (req, res) => {
     const uid = req.headers['uid'];
@@ -240,7 +239,9 @@ app.post('/process-dialogflow-voice', async (req, res) => {
                     'zero': 0, 'una': 1, 'dues': 2, 'tres': 3, 'quatre': 4, 'cinc': 5,
                     'sis': 6, 'set': 7, 'vuit': 8, 'nou': 9, 'deu': 10, 'onze': 11,
                     'dotze': 12, 'tretze': 13, 'catorze': 14, 'quinze': 15, 'setze': 16,
-                    'disset': 17, 'divuit': 18, 'dinou': 19, 'vint': 20, 'vint-i-u': 21, 'vint-i-dos': 22, 'vint-i-tres': 23,
+                    'disset': 17, 'divuit': 18, 'dinou': 19, 'vint': 20, 'vint-i-u': 21, 
+                    'vint-i-dos': 22, 'vint-i-tres': 23, 'vint-i-quatre': 0,
+
                 };
 
                 let h = parseInt(hour, 10);
@@ -365,5 +366,5 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`🚀 Servidor actiu al port ${PORT}`));
