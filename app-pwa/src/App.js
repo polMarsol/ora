@@ -173,7 +173,31 @@ const handleDelete = async (idToDelete) => {
 
     recognition.onresult = async (event) => {
       const transcript = event.results[0][0].transcript.toLowerCase();
-      // Mostra la transcripció i els botons de confirmació
+
+    if (
+      transcript.includes('quin és el meu horari') ||
+      transcript.includes('que tinc') ||
+      transcript.includes('quines activitats tinc') ||
+      transcript.includes('horari')
+    ) {
+      toast.info('Recitant les teves activitats.');
+      if (schedule.length === 0) {
+        const utter = new window.SpeechSynthesisUtterance('No tens cap activitat programada.');
+        utter.lang = 'ca-ES';
+        window.speechSynthesis.speak(utter);
+      } else {
+        const text = schedule
+          .map(item => `${item.day}, a les ${item.time}, ${item.title}`)
+          .join('. ');
+        const utter = new window.SpeechSynthesisUtterance(user.email.split('@')[0].trim()+' Les teves activitats són: ' + text);
+        utter.lang = 'ca-ES';
+        window.speechSynthesis.speak(utter);
+      }
+      setPendingVoiceQuery(null);
+      setShowVoiceConfirmation(false);
+      return;
+    }
+
       setPendingVoiceQuery(transcript);
       setShowVoiceConfirmation(true);
     };
@@ -186,7 +210,6 @@ const handleDelete = async (idToDelete) => {
     };
   };
 
-  // Nova funció per gestionar la confirmació de veu
   const confirmVoiceInput = async () => {
     if (!pendingVoiceQuery || !user) return;
 
