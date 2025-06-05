@@ -195,9 +195,11 @@ const startVoiceInput = () => {
 
 if (transcript.includes('horari uni') || transcript.includes('quin és el meu horari')) {
   toast.info('Obrint horari universitari...');
-  setShowUniSchedule(true);
-  setPendingVoiceQuery(null);
-  setShowVoiceConfirmation(false);
+  //setShowUniSchedule(true);
+  //setPendingVoiceQuery(null);
+  //setShowVoiceConfirmation(false);
+  window.open('https://www.eps.udl.cat/export/sites/Eps/docs/info_acad/horaris/actual/horari_classes/planou/2nQuadrimestre/horari_2Q_GEI_IG.pdf ', '_blank');
+  
   return;
 }
 
@@ -226,7 +228,6 @@ if (transcript.includes('horari uni') || transcript.includes('quin és el meu ho
 
     // Consulta general d'horari
     if (
-      transcript.includes('quin és el meu horari') ||
       transcript.includes('que tinc') ||
       transcript.includes('quines activitats tinc') ||
       transcript.includes('horari')
